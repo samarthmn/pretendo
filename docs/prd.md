@@ -56,23 +56,55 @@ Character (framed as "inspired by", not exact impersonation):
 - Backend: Python + FastAPI
 - LLM:
 
-## 8. Suggested File Structure
+## 8. File Structure
 
 ```txt
 pretendo/
   apps/
     web/
+      src/
+        app/
+          layout.tsx
+          page.tsx
+        components/
+          ChatComposer.tsx
+          CharacterPicker.tsx
+          MoodPicker.tsx
+          ResponsePanel.tsx
+        lib/
+          api.ts
+          shared.ts
+      package.json
+      next.config.ts
+      tsconfig.json
 
     api/
+      app/
+        main.py
+        routes/
+          chat.py
+        schemas/
+          chat.py
+        services/
+          llm.py
+          prompt_builder.py
+        core/
+          config.py
+      tests/
+      pyproject.toml
 
   packages/
     shared/
-      mood.json # single source of truth for character metadata
-      characters.json # single source of truth for character metadata
+      characters.json # single source of truth for character definitions
+      moods.json # single source of truth for mood definitions
+      types.ts # shared frontend types generated or maintained from JSON
 
   docs/
     prd.md
 
   README.md
+  package.json
+  pnpm-workspace.yaml
+  .env.example
   .gitignore
 ```

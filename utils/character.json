@@ -6,5 +6,11 @@
   { "id": "5", "name": "Steve Jobs" },
   { "id": "6", "name": "Jim Carrey" },
   { "id": "7", "name": "Osho Rajneesh" },
-  { "id": "8", "name": "Jiddu Krishnamurti" }
+  { "id": "8", "name": "Jiddu Krishnamurti" },
+  { "id": "9", "name": "Joe Rogan" },
+  { "id": "10", "name": "Gordon Ramsay" },
+  { "id": "11", "name": "Simon Cowell" },
+  { "id": "12", "name": "Taylor Swift" },
+  { "id": "13", "name": "Arnold Schwarzenegger" },
+  { "id": "14", "name": "Snoop Dogg" }
 ]

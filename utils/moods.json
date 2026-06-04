@@ -1,0 +1,7 @@
+[
+  { "id": "1", "name": "Funny", "description": "Funny as a clown" },
+  { "id": "2", "name": "Serious", "description": "Serious as a judge" },
+  { "id": "3", "name": "Pissed off", "description": "Pissed off as a drunk" },
+  { "id": "4", "name": "Angry", "description": "Angry as a bear" },
+  { "id": "5", "name": "Calm", "description": "Calm as a lake" }
+]

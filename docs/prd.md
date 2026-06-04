@@ -3,7 +3,7 @@
 ## 1. Summary
 
 Pretendo takes any user question and answers it as a preselected mood and character.
-A reply can be selected, based on -> mood (funny, serious, pissed off, angry and calm) and character (of a public-figures like Elon Musk, Naval Ravikant, Sadhguru, Osho, Donald Trump etc.)
+A reply can be selected based on mood (funny, serious, pissed off, angry, calm — see `utils/moods.json`) and character (public figures such as Donald Trump, Elon Musk, Naval Ravikant, Mark Zuckerberg, Steve Jobs, Jim Carrey, Osho Rajneesh, Jiddu Krishnamurti — see `utils/character.json`).
 
 The user asks a question, picks a character and mood -> gets an explanation written in that
 character's voice and mood.
@@ -11,7 +11,7 @@ character's voice and mood.
 ## 2. Goals
 
 - Answer any question in a selected character voice and mood.
-- Keep character definitions in one place so frontend and backend stay aligned.
+- Keep character and mood definitions in `utils/character.json` and `utils/moods.json` so frontend and backend stay aligned.
 
 ## 3. Users
 
@@ -29,21 +29,28 @@ Anyone who wants an explanation with personality — for fun, for learning, or f
 
 ## 5. Moods & Characters
 
-Moods:
+Moods. Canonical list: `utils/moods.json`.
 
-- Funny
-- Serious
-- Pissed off
-- Calm
-- Angry
+| id  | name       | description           |
+| --- | ---------- | --------------------- |
+| 1   | Funny      | Funny as a clown      |
+| 2   | Serious    | Serious as a judge    |
+| 3   | Pissed off | Pissed off as a drunk |
+| 4   | Angry      | Angry as a bear       |
+| 5   | Calm       | Calm as a lake        |
 
-Character (framed as "inspired by", not exact impersonation):
+Characters (framed as "inspired by", not exact impersonation). Canonical list: `utils/character.json`.
 
-- Trump
-- Elon
-- Naval
-- Sadhguru
-- Osho
+| id  | name               |
+| --- | ------------------ |
+| 1   | Donald Trump       |
+| 2   | Elon Musk          |
+| 3   | Naval Ravikant     |
+| 4   | Mark Zuckerberg    |
+| 5   | Steve Jobs         |
+| 6   | Jim Carrey         |
+| 7   | Osho Rajneesh      |
+| 8   | Jiddu Krishnamurti |
 
 ## 6. Safety
 
@@ -54,57 +61,4 @@ Character (framed as "inspired by", not exact impersonation):
 
 - Frontend: Next.js (App Router) + TypeScript
 - Backend: Python + FastAPI
-- LLM:
-
-## 8. File Structure
-
-```txt
-pretendo/
-  apps/
-    web/
-      src/
-        app/
-          layout.tsx
-          page.tsx
-        components/
-          ChatComposer.tsx
-          CharacterPicker.tsx
-          MoodPicker.tsx
-          ResponsePanel.tsx
-        lib/
-          api.ts
-          shared.ts
-      package.json
-      next.config.ts
-      tsconfig.json
-
-    api/
-      app/
-        main.py
-        routes/
-          chat.py
-        schemas/
-          chat.py
-        services/
-          llm.py
-          prompt_builder.py
-        core/
-          config.py
-      tests/
-      pyproject.toml
-
-  packages/
-    shared/
-      characters.json # single source of truth for character definitions
-      moods.json # single source of truth for mood definitions
-      types.ts # shared frontend types generated or maintained from JSON
-
-  docs/
-    prd.md
-
-  README.md
-  package.json
-  pnpm-workspace.yaml
-  .env.example
-  .gitignore
-```
+- LLM: OpenRouter or Local LLM

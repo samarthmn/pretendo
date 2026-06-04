@@ -17,6 +17,7 @@ class _FakeCompletions:
     def create(self, **kwargs):
         self.last_request = kwargs
         return SimpleNamespace(
+            model=kwargs["model"],
             choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
         )
 
@@ -101,7 +102,17 @@ class ApiSecurityTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"response": "ok"})
+        self.assertEqual(
+            response.json(),
+            {
+                "response": "ok",
+                "model": {
+                    "id": "openrouter/free",
+                    "name": "OpenRouter Free",
+                    "canonical_slug": "openrouter/free",
+                },
+            },
+        )
         request = self.fake_client.chat.completions.last_request
         self.assertEqual(request["model"], "openrouter/free")
         self.assertEqual(request["messages"][0]["role"], "system")

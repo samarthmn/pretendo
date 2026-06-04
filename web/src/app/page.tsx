@@ -36,13 +36,14 @@ type Message = {
   content: string;
   character: string;
   mood: string;
+  model: string;
   createdAt: number;
 };
 
 type SQLDatabase = initSqlJs.Database;
 type SQLiteRow = Record<string, initSqlJs.SqlValue>;
 
-const SESSION_MESSAGE_LIMIT = 20;
+const SESSION_MESSAGE_LIMIT = 10;
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const SQLITE_STORAGE_KEY = "pretendo-chat-sqlite-db";
 const COMPOSER_MAX_HEIGHT = 144;
@@ -62,6 +63,8 @@ const characters = [
   "Taylor Swift",
   "Arnold Schwarzenegger",
   "Snoop Dogg",
+  "Beyonce",
+  "Michael Jackson",
 ];
 
 const moods = ["Funny", "Serious", "Pissed off", "Angry", "Calm"];
@@ -88,6 +91,7 @@ function rowToMessage(row: SQLiteRow): Message {
     content: String(row.content ?? ""),
     character: String(row.character ?? characters[0]),
     mood: String(row.mood ?? moods[0]),
+    model: String(row.model ?? defaultModelOptions[0].label),
     createdAt: Number(row.created_at ?? Date.now()),
   };
 }
@@ -123,9 +127,17 @@ function execSql(db: SQLDatabase, sql: string, bind?: (string | number)[]) {
   persistDatabase(db);
 }
 
+function hasColumn(db: SQLDatabase, table: string, columnName: string) {
+  const result = db.exec(`PRAGMA table_info(${table});`)[0];
+  if (!result) return false;
+
+  const nameIndex = result.columns.indexOf("name");
+  return result.values.some((row) => row[nameIndex] === columnName);
+}
+
 function selectMessages(db: SQLDatabase) {
   const result = db.exec(
-    "SELECT id, role, content, character, mood, created_at FROM messages ORDER BY created_at ASC;",
+    "SELECT id, role, content, character, mood, model, created_at FROM messages ORDER BY created_at ASC;",
   )[0];
 
   if (!result) return [];
@@ -156,9 +168,17 @@ async function createSQLiteStore() {
       content TEXT NOT NULL,
       character TEXT NOT NULL,
       mood TEXT NOT NULL,
+      model TEXT NOT NULL DEFAULT 'OpenRouter Free',
       created_at INTEGER NOT NULL
     );`,
   );
+
+  if (!hasColumn(db, "messages", "model")) {
+    execSql(
+      db,
+      "ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT 'OpenRouter Free';",
+    );
+  }
 
   return { db };
 }
@@ -205,14 +225,15 @@ export default function Home() {
 
     execSql(
       store.db,
-      `INSERT INTO messages (id, role, content, character, mood, created_at)
-       VALUES (?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO messages (id, role, content, character, mood, model, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?);`,
       [
         message.id,
         message.role,
         message.content,
         message.character,
         message.mood,
+        message.model,
         message.createdAt,
       ],
     );
@@ -328,10 +349,19 @@ export default function Home() {
 
       if (!response.ok)
         throw new Error(`API responded with ${response.status}`);
-      return extractAssistantResponse(await response.json(), fallbackReply());
+      return extractAssistantResponse(
+        await response.json(),
+        fallbackReply(),
+        selectedModel,
+        selectedModelLabel,
+      );
     } catch (error) {
       console.error(error);
-      return fallbackReply();
+      return {
+        content: fallbackReply(),
+        modelId: selectedModel,
+        modelLabel: selectedModelLabel,
+      };
     }
   }
 
@@ -354,6 +384,7 @@ export default function Home() {
       content,
       character: selectedCharacter,
       mood: selectedMood,
+      model: selectedModelLabel,
       createdAt: Date.now(),
     };
 
@@ -361,13 +392,14 @@ export default function Home() {
     setMessages(nextMessages);
     await insertMessage(userMessage);
 
-    const assistantContent = await requestAssistantReply(nextMessages);
+    const assistantReply = await requestAssistantReply(nextMessages);
     const assistantMessage: Message = {
       id: createMessageId("assistant"),
       role: "assistant",
-      content: assistantContent,
+      content: assistantReply.content,
       character: selectedCharacter,
       mood: selectedMood,
+      model: assistantReply.modelLabel,
       createdAt: Date.now() + 1,
     };
 
@@ -466,7 +498,7 @@ export default function Home() {
                   aria-label={
                     message.role === "user"
                       ? "Your message"
-                      : `Pretendo message in ${message.character}, ${message.mood}`
+                      : `Pretendo message in ${message.character}, ${message.mood}, ${message.model}`
                   }
                 >
                   {message.role === "assistant" ? (
@@ -491,6 +523,8 @@ export default function Home() {
                         <span>{message.character}</span>
                         <span className="h-1 w-1 rounded-full bg-[#62566b]" />
                         <span>{message.mood}</span>
+                        <span className="h-1 w-1 rounded-full bg-[#62566b]" />
+                        <span>{message.model}</span>
                       </div>
                     ) : null}
                   </div>

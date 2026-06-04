@@ -24,16 +24,38 @@ test("buildApiUrl joins configured API bases without duplicate slashes", () => {
 });
 
 test("extractAssistantResponse reads the backend response contract", () => {
-  assert.equal(
-    extractAssistantResponse({ response: "from api" }, "fallback"),
-    "from api",
+  assert.deepEqual(
+    extractAssistantResponse(
+      {
+        response: "from api",
+        model: {
+          id: "provider/free-model",
+          name: "Provider Free Model",
+        },
+      },
+      "fallback",
+    ),
+    {
+      content: "from api",
+      modelId: "provider/free-model",
+      modelLabel: "Provider Free Model",
+    },
   );
 });
 
 test("extractAssistantResponse falls back for unknown response bodies", () => {
-  assert.equal(
-    extractAssistantResponse({ message: "old shape" }, "fallback"),
-    "fallback",
+  assert.deepEqual(
+    extractAssistantResponse(
+      { message: "old shape" },
+      "fallback",
+      "provider/free-model",
+      "Provider Free Model",
+    ),
+    {
+      content: "fallback",
+      modelId: "provider/free-model",
+      modelLabel: "Provider Free Model",
+    },
   );
 });
 
@@ -68,6 +90,7 @@ test("createGenerateResponsePayload sends the backend-supported free model", () 
         content: "Hello",
         character: "Steve Jobs",
         mood: "Calm",
+        model: "OpenRouter Free",
         createdAt: 1,
         id: "1",
       },
@@ -88,6 +111,7 @@ test("createGenerateResponsePayload sends the selected model", () => {
         content: "Hello",
         character: "Steve Jobs",
         mood: "Calm",
+        model: "Provider Free Model",
         createdAt: 1,
         id: "1",
       },

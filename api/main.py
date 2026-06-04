@@ -25,16 +25,19 @@ if allowed_origins:
     )
 
 
+@app.get("/health")
 @app.get("/api/health")
 def health():
     return {"message": "OK"}
 
 
+@app.get("/available-openrouter-llms")
 @app.get("/api/available-openrouter-llms")
 def available_openrouter_llms():
     return get_available_openrouter_llms()
 
 
+@app.post("/generate-response")
 @app.post("/api/generate-response")
 def generate_response_api(request: GenerateResponseRequest):
-    return {"response": generate_response(request)}
+    return generate_response(request)

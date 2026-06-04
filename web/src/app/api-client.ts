@@ -7,6 +7,7 @@ export type StoredChatMessage = ChatMessageForApi & {
   id: string;
   character: string;
   mood: string;
+  model: string;
   createdAt: number;
 };
 
@@ -17,12 +18,18 @@ export type GenerateResponsePayload = {
   model_id: string;
 };
 
-const SESSION_MESSAGE_LIMIT = 20;
+const SESSION_MESSAGE_LIMIT = 10;
 export const DEFAULT_MODEL_ID = "openrouter/free";
 
 export type SelectOption = {
   value: string;
   label: string;
+};
+
+export type AssistantResponse = {
+  content: string;
+  modelId: string;
+  modelLabel: string;
 };
 
 export function buildApiUrl(baseUrl: string | undefined, path: string) {
@@ -75,7 +82,12 @@ export function extractAvailableModelOptions(data: unknown): SelectOption[] {
   });
 }
 
-export function extractAssistantResponse(data: unknown, fallback: string) {
+export function extractAssistantResponse(
+  data: unknown,
+  fallback: string,
+  fallbackModelId = DEFAULT_MODEL_ID,
+  fallbackModelLabel = "OpenRouter Free",
+): AssistantResponse {
   if (
     data &&
     typeof data === "object" &&
@@ -83,8 +95,41 @@ export function extractAssistantResponse(data: unknown, fallback: string) {
     typeof data.response === "string" &&
     data.response.trim().length > 0
   ) {
-    return data.response;
+    let modelId = fallbackModelId;
+    let modelLabel = fallbackModelLabel;
+
+    if ("model" in data && data.model && typeof data.model === "object") {
+      const model = data.model;
+
+      if (
+        "id" in model &&
+        typeof model.id === "string" &&
+        model.id.trim().length > 0
+      ) {
+        modelId = model.id.trim();
+      }
+
+      if (
+        "name" in model &&
+        typeof model.name === "string" &&
+        model.name.trim().length > 0
+      ) {
+        modelLabel = model.name.trim();
+      } else {
+        modelLabel = modelId;
+      }
+    }
+
+    return {
+      content: data.response,
+      modelId,
+      modelLabel,
+    };
   }
 
-  return fallback;
+  return {
+    content: fallback,
+    modelId: fallbackModelId,
+    modelLabel: fallbackModelLabel,
+  };
 }

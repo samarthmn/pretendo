@@ -9,7 +9,12 @@ from schemas import GenerateResponseRequest
 import os
 import json
 
-UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
+API_DIR = Path(__file__).resolve().parent
+UTILS_DIR = next(
+    candidate
+    for candidate in (API_DIR.parent / "utils", API_DIR / "utils")
+    if candidate.exists()
+)
 DEFAULT_FREE_MODEL = {
     "id": "openrouter/free",
     "name": "OpenRouter Free",
@@ -81,16 +86,42 @@ def get_available_openrouter_llms():
     return [DEFAULT_FREE_MODEL, *models]
 
 
-def _ensure_free_model(model_id: str) -> None:
+def _find_free_model(model_id: str) -> dict:
     if model_id == DEFAULT_FREE_MODEL["id"]:
-        return
+        return DEFAULT_FREE_MODEL
 
-    allowed_model_ids = {model["id"] for model in get_available_openrouter_llms()}
-    if model_id not in allowed_model_ids:
+    for model in get_available_openrouter_llms():
+        if model["id"] == model_id:
+            return model
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="model_id must reference an available free OpenRouter model",
+    )
+
+
+def _model_payload(model_id: str, requested_model: dict) -> dict:
+    if model_id == requested_model["id"]:
+        return requested_model
+
+    try:
+        return _find_free_model(model_id)
+    except HTTPException:
+        return {
+            "id": model_id,
+            "name": model_id,
+            "canonical_slug": model_id,
+        }
+
+
+def _response_content(response) -> str:
+    content = response.choices[0].message.content
+    if not content:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="model_id must reference an available free OpenRouter model",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="LLM provider returned an empty response",
         )
+    return content
 
 
 def _find_by_id_or_name(items: list[dict], key: str) -> dict:
@@ -101,7 +132,7 @@ def _find_by_id_or_name(items: list[dict], key: str) -> dict:
 
 
 def generate_response(request: GenerateResponseRequest):
-    _ensure_free_model(request.model_id)
+    requested_model = _find_free_model(request.model_id)
     try:
         character = _find_by_id_or_name(characters, request.character)
         mood = _find_by_id_or_name(moods, request.mood)["description"]
@@ -136,4 +167,8 @@ def generate_response(request: GenerateResponseRequest):
             detail="LLM provider request failed",
         ) from exc
 
-    return response.choices[0].message.content
+    used_model_id = getattr(response, "model", None) or request.model_id
+    return {
+        "response": _response_content(response),
+        "model": _model_payload(used_model_id, requested_model),
+    }

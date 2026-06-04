@@ -25,7 +25,7 @@ if allowed_origins:
     )
 
 
-@app.get("/health")
+@app.get("/api/health")
 def health():
     return {"message": "OK"}
 

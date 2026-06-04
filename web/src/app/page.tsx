@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Broom,
   CaretDown,
+  GithubLogo,
   SlidersHorizontal,
   Sparkle,
   Trash,
@@ -442,6 +443,16 @@ export default function Home() {
                 <p className="text-sm font-semibold text-white">Pretendo</p>
               </div>
             </div>
+            <a
+              href="https://github.com/samarthmn/pretendo"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open Pretendo on GitHub"
+              className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-[#d9cedf] transition hover:border-white/18 hover:bg-white/[0.085] hover:text-white"
+            >
+              <GithubLogo size={17} weight="duotone" aria-hidden="true" />
+              <span className="hidden sm:inline">GitHub</span>
+            </a>
           </div>
         </header>
 

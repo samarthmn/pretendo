@@ -101,7 +101,7 @@ class ApiSecurityTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), "ok")
+        self.assertEqual(response.json(), {"response": "ok"})
         request = self.fake_client.chat.completions.last_request
         self.assertEqual(request["model"], "openrouter/free")
         self.assertEqual(request["messages"][0]["role"], "system")

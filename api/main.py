@@ -37,4 +37,4 @@ def available_openrouter_llms():
 
 @app.post("/api/generate-response")
 def generate_response_api(request: GenerateResponseRequest):
-    return generate_response(request)
+    return {"response": generate_response(request)}

@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Broom,
   CaretDown,
+  SlidersHorizontal,
   Sparkle,
   Trash,
   UserCircle,
@@ -18,6 +19,14 @@ import {
   useState,
 } from "react";
 import type initSqlJs from "sql.js";
+import {
+  buildApiUrl,
+  createGenerateResponsePayload,
+  DEFAULT_MODEL_ID,
+  extractAvailableModelOptions,
+  extractAssistantResponse,
+  type SelectOption,
+} from "./api-client";
 
 type Role = "user" | "assistant";
 
@@ -35,7 +44,6 @@ type SQLiteRow = Record<string, initSqlJs.SqlValue>;
 
 const SESSION_MESSAGE_LIMIT = 20;
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-const DEFAULT_MODEL_ID = "openrouter/auto";
 const SQLITE_STORAGE_KEY = "pretendo-chat-sqlite-db";
 const COMPOSER_MAX_HEIGHT = 144;
 
@@ -57,6 +65,10 @@ const characters = [
 ];
 
 const moods = ["Funny", "Serious", "Pissed off", "Angry", "Calm"];
+
+const defaultModelOptions: SelectOption[] = [
+  { value: DEFAULT_MODEL_ID, label: "OpenRouter Free" },
+];
 
 const starterPrompts = [
   "Explain quantum computing in one paragraph.",
@@ -151,17 +163,12 @@ async function createSQLiteStore() {
   return { db };
 }
 
-function fallbackReply(prompt: string, character: string, mood: string) {
-  const moodHint =
-    mood === "Calm"
-      ? "with a calm, grounded tone"
-      : mood === "Funny"
-        ? "with a light comic edge"
-        : mood === "Serious"
-          ? "with direct, serious framing"
-          : "with sharper energy while staying safe";
+function fallbackReply() {
+  return "I'm sorry, I'm having trouble understanding your request. Please try again.";
+}
 
-  return `Inspired by ${character}, it would answer ${moodHint}: ${prompt.trim()} Start with the simplest version, name the tradeoff, and end with one concrete next step.`;
+function stringOptions(options: string[]): SelectOption[] {
+  return options.map((option) => ({ value: option, label: option }));
 }
 
 export default function Home() {
@@ -169,6 +176,9 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [selectedCharacter, setSelectedCharacter] = useState(characters[4]);
   const [selectedMood, setSelectedMood] = useState(moods[4]);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
+  const [modelOptions, setModelOptions] =
+    useState<SelectOption[]>(defaultModelOptions);
   const [isSending, setIsSending] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [error, setError] = useState("");
@@ -183,6 +193,9 @@ export default function Home() {
   ).length;
   const remainingMessages = SESSION_MESSAGE_LIMIT - sentMessageCount;
   const isLimitReached = remainingMessages <= 0;
+  const selectedModelLabel =
+    modelOptions.find((model) => model.value === selectedModel)?.label ??
+    selectedModel;
   const canSend =
     input.trim().length > 0 && !isSending && !isLimitReached && storageReady;
 
@@ -251,6 +264,37 @@ export default function Home() {
   }, [input, resizeComposer]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadModels() {
+      try {
+        const response = await fetch(
+          buildApiUrl(API_BASE_URL, "/api/available-openrouter-llms"),
+        );
+        if (!response.ok) return;
+
+        const options = extractAvailableModelOptions(await response.json());
+        if (cancelled || options.length === 0) return;
+
+        setModelOptions(options);
+        setSelectedModel((currentModel) =>
+          options.some((option) => option.value === currentModel)
+            ? currentModel
+            : options[0].value,
+        );
+      } catch (modelError) {
+        console.error(modelError);
+      }
+    }
+
+    loadModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
 
@@ -264,48 +308,30 @@ export default function Home() {
     });
   }, [messages, isSending]);
 
-  async function requestAssistantReply(
-    nextMessages: Message[],
-    prompt: string,
-  ) {
-    if (!API_BASE_URL) {
-      return fallbackReply(prompt, selectedCharacter, selectedMood);
-    }
-
-    const payload = {
-      messages: nextMessages
-        .slice(-(SESSION_MESSAGE_LIMIT * 2))
-        .map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
+  async function requestAssistantReply(nextMessages: Message[]) {
+    const payload = createGenerateResponsePayload({
+      messages: nextMessages,
       character: selectedCharacter,
       mood: selectedMood,
-      model_id: DEFAULT_MODEL_ID,
-    };
+      modelId: selectedModel,
+    });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/generate-response`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        buildApiUrl(API_BASE_URL, "/api/generate-response"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
       if (!response.ok)
         throw new Error(`API responded with ${response.status}`);
-      const data = (await response.json()) as {
-        response?: string;
-        message?: string;
-        content?: string;
-      };
-      return (
-        data.response ??
-        data.message ??
-        data.content ??
-        fallbackReply(prompt, selectedCharacter, selectedMood)
-      );
-    } catch {
-      return fallbackReply(prompt, selectedCharacter, selectedMood);
+      return extractAssistantResponse(await response.json(), fallbackReply());
+    } catch (error) {
+      console.error(error);
+      return fallbackReply();
     }
   }
 
@@ -335,7 +361,7 @@ export default function Home() {
     setMessages(nextMessages);
     await insertMessage(userMessage);
 
-    const assistantContent = await requestAssistantReply(nextMessages, content);
+    const assistantContent = await requestAssistantReply(nextMessages);
     const assistantMessage: Message = {
       id: createMessageId("assistant"),
       role: "assistant",
@@ -360,7 +386,7 @@ export default function Home() {
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+    if (event.key !== "Enter" || event.shiftKey) return;
 
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
@@ -550,68 +576,113 @@ export default function Home() {
                 aria-invalid={Boolean(error)}
               />
               <p id="composer-help" className="sr-only">
-                Press Command Enter or Control Enter to send. Choose a character
-                and mood before sending.
+                Press Enter to send or Shift Enter for a new line. Choose a
+                character and mood before sending.
               </p>
 
-              <div className="flex items-center gap-2 border-t border-white/[0.06] pt-2">
-                <div className="scrollbar-hidden flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-                  <SelectControl
-                    label="Voice"
-                    value={selectedCharacter}
-                    options={characters}
-                    onChange={setSelectedCharacter}
-                    mobileWidth="w-[132px]"
-                  />
-                  <SelectControl
-                    label="Mood"
-                    value={selectedMood}
-                    options={moods}
-                    onChange={setSelectedMood}
-                    mobileWidth="w-[88px]"
-                  />
-                </div>
+              <div className="border-t border-white/[0.06] pt-2">
+                <div className="hidden items-center gap-2 sm:flex">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <SelectControl
+                      label="Voice"
+                      value={selectedCharacter}
+                      options={stringOptions(characters)}
+                      onChange={setSelectedCharacter}
+                    />
+                    <SelectControl
+                      label="Mood"
+                      value={selectedMood}
+                      options={stringOptions(moods)}
+                      onChange={setSelectedMood}
+                    />
+                    <SelectControl
+                      label="Model"
+                      value={selectedModel}
+                      options={modelOptions}
+                      onChange={setSelectedModel}
+                      maxSelectWidth="sm:max-w-[176px]"
+                    />
+                  </div>
 
-                <div className="flex shrink-0 items-center justify-end gap-1.5">
-                  <button
-                    type="button"
-                    onClick={clearChat}
-                    disabled={messages.length === 0}
-                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-[#c7bccd] transition hover:border-[#a74375]/45 hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:gap-1.5 sm:px-2.5 sm:text-xs sm:font-semibold"
-                    aria-label="Clear chat"
-                    title="Clear chat"
-                  >
-                    <Trash size={14} weight="duotone" />
-                    <span className="hidden sm:inline">Clear chat</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
+                  <ComposerActions
+                    canSend={canSend}
+                    hasMessages={messages.length > 0}
+                    isSending={isSending}
+                    onClearChat={clearChat}
+                    onClearComposer={() => {
                       setInput("");
                       setError("");
                     }}
-                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.045] text-[#c9bdcf] transition hover:border-white/15 hover:bg-white/[0.075] hover:text-white"
-                    aria-label="Clear composer"
-                    title="Clear composer"
-                  >
-                    <Broom size={15} weight="duotone" />
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!canSend}
-                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#a74375]/50 bg-[#6d2450] text-white shadow-[0_10px_30px_rgba(167,67,117,0.25)] transition hover:bg-[#82305f] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.045] disabled:text-[#706676] disabled:shadow-none"
-                    aria-label="Send message"
-                    title="Send message"
-                  >
-                    {isSending ? (
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    ) : (
-                      <ArrowUp size={16} weight="bold" />
-                    )}
-                  </button>
+                  />
+                </div>
+
+                <div className="flex items-start gap-2 sm:hidden">
+                  <details className="group min-w-0 flex-1">
+                    <summary className="flex h-8 min-w-0 cursor-pointer list-none items-center gap-2 rounded-xl border border-white/[0.09] bg-[#302835] px-2.5 text-xs font-semibold text-[#eee5f2] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-white/15 hover:bg-[#372d3b] [&::-webkit-details-marker]:hidden">
+                      <SlidersHorizontal
+                        size={15}
+                        weight="duotone"
+                        className="shrink-0 text-[#f3a4cb]"
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-left">
+                        {selectedCharacter} / {selectedMood} /{" "}
+                        {selectedModelLabel}
+                      </span>
+                      <CaretDown
+                        size={13}
+                        weight="bold"
+                        className="shrink-0 text-[#9c8ea5] transition group-open:rotate-180"
+                        aria-hidden="true"
+                      />
+                    </summary>
+
+                    <div id="selector-panel" className="grid gap-1.5 pt-2">
+                      <SelectControl
+                        label="Voice"
+                        value={selectedCharacter}
+                        options={stringOptions(characters)}
+                        onChange={setSelectedCharacter}
+                        mobileWidth="w-full"
+                        showLabel
+                      />
+                      <SelectControl
+                        label="Mood"
+                        value={selectedMood}
+                        options={stringOptions(moods)}
+                        onChange={setSelectedMood}
+                        mobileWidth="w-full"
+                        showLabel
+                      />
+                      <SelectControl
+                        label="Model"
+                        value={selectedModel}
+                        options={modelOptions}
+                        onChange={setSelectedModel}
+                        mobileWidth="w-full"
+                        showLabel
+                      />
+                    </div>
+                  </details>
+
+                  <ComposerActions
+                    canSend={canSend}
+                    hasMessages={messages.length > 0}
+                    isSending={isSending}
+                    onClearChat={clearChat}
+                    onClearComposer={() => {
+                      setInput("");
+                      setError("");
+                    }}
+                  />
                 </div>
               </div>
             </form>
+
+            <p className="px-1.5 py-1.5 text-center text-[11px] leading-4 text-[#8f8198]">
+              Pretendo is a hobby project and is not intended to defame any
+              public figures.
+            </p>
           </div>
         </div>
       </section>
@@ -641,7 +712,63 @@ function MessageLimitStatus({
       <span className="rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[#d8cedf]">
         {count}/{limit} sent
       </span>
-      <span>{isLimitReached ? "Limit reached" : `${remaining} remaining`}</span>
+      <span>
+        {isLimitReached
+          ? "Clear chat to reset"
+          : `${remaining} remaining - clear chat to reset`}
+      </span>
+    </div>
+  );
+}
+
+function ComposerActions({
+  canSend,
+  hasMessages,
+  isSending,
+  onClearChat,
+  onClearComposer,
+}: {
+  canSend: boolean;
+  hasMessages: boolean;
+  isSending: boolean;
+  onClearChat: () => void;
+  onClearComposer: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center justify-end gap-1.5">
+      <button
+        type="button"
+        onClick={onClearChat}
+        disabled={!hasMessages}
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-[#c7bccd] transition hover:border-[#a74375]/45 hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:gap-1.5 sm:px-2.5 sm:text-xs sm:font-semibold"
+        aria-label="Clear chat"
+        title="Clear chat"
+      >
+        <Trash size={14} weight="duotone" />
+        <span className="hidden sm:inline">Clear chat</span>
+      </button>
+      <button
+        type="button"
+        onClick={onClearComposer}
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.045] text-[#c9bdcf] transition hover:border-white/15 hover:bg-white/[0.075] hover:text-white"
+        aria-label="Clear composer"
+        title="Clear composer"
+      >
+        <Broom size={15} weight="duotone" />
+      </button>
+      <button
+        type="submit"
+        disabled={!canSend}
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#a74375]/50 bg-[#6d2450] text-white shadow-[0_10px_30px_rgba(167,67,117,0.25)] transition hover:bg-[#82305f] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.045] disabled:text-[#706676] disabled:shadow-none"
+        aria-label="Send message"
+        title="Send message"
+      >
+        {isSending ? (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        ) : (
+          <ArrowUp size={16} weight="bold" />
+        )}
+      </button>
     </div>
   );
 }
@@ -652,34 +779,40 @@ function SelectControl({
   options,
   onChange,
   mobileWidth = "w-auto",
+  maxSelectWidth = "sm:max-w-[136px]",
+  showLabel = false,
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: SelectOption[];
   onChange: (value: string) => void;
   mobileWidth?: string;
+  maxSelectWidth?: string;
+  showLabel?: boolean;
 }) {
   return (
     <label
-      className={`group relative flex h-8 shrink-0 items-center gap-1.5 rounded-xl border border-white/[0.09] bg-[#302835] px-2 text-xs font-semibold text-[#d0c4d7] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition focus-within:border-[#c75f98]/65 focus-within:bg-[#372d3b] hover:border-white/15 hover:bg-[#372d3b] sm:h-9 sm:w-auto sm:rounded-2xl sm:px-2.5 sm:text-sm ${mobileWidth}`}
+      className={`group relative flex h-8 shrink-0 items-center gap-1.5 rounded-xl border border-white/[0.09] bg-[#302835] px-2 text-xs font-semibold text-[#d0c4d7] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition focus-within:border-[#c75f98]/65 focus-within:bg-[#372d3b] hover:border-white/15 hover:bg-[#372d3b] sm:w-auto sm:px-2.5 ${mobileWidth}`}
     >
-      <span className="hidden text-xs font-medium text-[#a799b0] sm:inline">
+      <span
+        className={`text-xs font-medium text-[#a799b0] ${showLabel ? "inline min-w-10" : "hidden sm:inline"}`}
+      >
         {label}
       </span>
       <select
         value={value}
         suppressHydrationWarning
         onChange={(event) => onChange(event.target.value)}
-        className="w-full appearance-none bg-transparent pr-5 text-[#f7eff9] outline-none sm:max-w-[156px]"
+        className={`w-full appearance-none truncate bg-transparent pr-5 text-[#f7eff9] outline-none ${maxSelectWidth}`}
         aria-label={label}
       >
         {options.map((option) => (
           <option
-            key={option}
-            value={option}
+            key={option.value}
+            value={option.value}
             className="bg-[#211824] text-white"
           >
-            {option}
+            {option.label}
           </option>
         ))}
       </select>
